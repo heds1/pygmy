@@ -36,109 +36,55 @@ def main():
 
     service = build('gmail', 'v1', credentials=creds)
 
-    # Call the Gmail API
-    results = service.users().labels().list(userId='me').execute()
-    labels = results.get('labels', [])
+    # get a list of the 5 most recent messages
+    # this does NOT retrieve the actual message data,
+    # we just use it to get the IDs
+    message_list = service.users().messages().list(userId='me', maxResults=5).execute()
+    message_ids = [i['id'] for i in message_list['messages']]
 
-    if not labels:
-        print('No labels found.')
-    else:
-        print('Labels:')
-        for label in labels:
-            print(label['name'])
+    # instantiate list to populate with clean messages
+    clean_messages = []
 
-    
-    #testmsg = service.users().messages().get(userId='me',id='173d231536a300b5', format='full').execute()
+    # loop over the message IDs to retrieve each actual message
+    for m in message_ids:
 
-    # testmsg obj is a dict of a single email now
-    # examine with keys(), e.g., 
-    # testmsg.keys()
-    # most of the interesting stuff is in payload, e.g.,
-    # testmsg['payload'].keys()
-    # then go into the headers for essentially metadata. this is a list, e.g.,
-    # type(testmsg['payload']['headers'])
-    # looks like a list of dicts actually.
+        # instantiate empty dict to hold message content
+        message_dict = {}
 
-    # loop over the list to get the 'name' keys?
-    # my_headers = testmsg['payload']['headers']
-    # for i in my_headers:
-        # if i['name'] == 'From':
-        #     print('From: ' + i['value'])
-        # if i['name'] == 'Date':
-        #     print('Date: ' + i['value'])
-        # if i['name'] == 'Subject':
-        #     print('Subject: ' + i['value'])
+        # retrieve the actual message
+        message = service.users().messages().get(userId='me', id=m).execute()
 
-    # then go into body for the actual message.
-    # actually no not in this case.
+        # get message headers for metadata
+        message_headers = message['payload']['headers']
 
-    # lets try to list the messages now
-    # allm = service.users().messages().list(userId='me').execute()
+        # turn list of dicts into single key/value pair dict
+        message_headers_ = {d['name']:d['value'] for d in message_headers}
 
-    # what do we have
-    # for i in allm:
-    #     print(i)
-    # messages
-    # nextPageToken
-    # resultSizeEstimate
-    # len(allm['messages']) # returns 100, default limit?
+        # retrieve message metadata
+        message_dict['from'] = message_headers_['From']
+        message_dict['date'] = message_headers_['Date']
+        message_dict['subject'] = message_headers_['Subject']
 
-    # looks like this just contains id and threadId:
-    # testmsg2 = allm['messages'][1]
+        # make this a try.
+        # maybe parts is only for rich-text.
+        # e.g. a github email in plain text has no parts.
+        
+        # retrieve message content - go in via parts for some reason
+        message_content = message['payload']['parts']
+        part_one  = message_content[0] # fetching first element of the part 
+        part_body = part_one['body'] # fetching body of the message
+        part_data = part_body['data'] # fetching data from the body
+        clean_one = part_data.replace("-","+") # decoding from Base64 to UTF-8
+        clean_one = clean_one.replace("_","/") # decoding from Base64 to UTF-8
+        clean_two = base64.b64decode (bytes(clean_one, 'UTF-8')) # decoding from Base64 to UTF-8
+        message_body = BeautifulSoup(clean_two , "html.parser" )
+        message_dict['body'] = message_body
 
-    # and we're supposed to use messages.get() to actually get the message.
-    # we can set maxResults
-    fivemsgs = service.users().messages().list(userId='me', maxResults=5).execute()
+        # append to list of compiled messages
+        clean_messages.append(message_dict)
+        # todo download conditionally on unread/read (label??)
 
-    # lets try to get each of these messages
-retrieved_msgs = []
-for i in fivemsgs['messages']:
-    this_msg = service.users().messages().get(userId='me', id=i['id'], format='full').execute()
-    my_headers = this_msg['payload']['headers']
-    for h in my_headers:
-        if h['name'] == 'From':
-            print('From: ' + h['value'])
-        if h['name'] == 'Date':
-            print('Date: ' + h['value'])
-        if h['name'] == 'Subject':
-            print('Subject: ' + h['value'])
-    
-id='173b864997b95d2c'
-message = service.users().messages().get(userId='me', id=id).execute()
-# i don't know why and can't find any documentation for this stupid fucking
-# thing, but you don't go via payload/body, you go via payload/parts
-msg_det = message['payload']['parts']
-for i in msg_det:
-    print(i)
-
-
-
-# Fetching message body
-mssg_parts = msg_det = message['payload']['parts'] # fetching the message parts
-part_one  = mssg_parts[0] # fetching first element of the part 
-part_body = part_one['body'] # fetching body of the message
-part_data = part_body['data'] # fetching data from the body
-clean_one = part_data.replace("-","+") # decoding from Base64 to UTF-8
-clean_one = clean_one.replace("_","/") # decoding from Base64 to UTF-8
-clean_two = base64.b64decode (bytes(clean_one, 'UTF-8')) # decoding from Base64 to UTF-8
-soup = BeautifulSoup(clean_two , "lxml" )
-mssg_body = soup.body()
-# mssg_body is a readible form of message body
-# depending on the end user's requirements, it can be further cleaned 
-# using regex, beautiful soup, or any other method
-temp_dict['Message_body'] = mssg_body
-
-    retrieved_msgs.append(this_msg)
-    print(i['id'])
-
-    print('aye')
-
-    # todo download conditionally on unread/read (label??)
-
-    # alright we have five msgs downloaded in full
-for i in retrieved_msgs:
-    print(i['headers'])
-
+    print('lol')
 
 if __name__ == '__main__':
     main()
