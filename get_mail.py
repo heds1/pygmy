@@ -68,23 +68,35 @@ def main():
         # make this a try.
         # maybe parts is only for rich-text.
         # e.g. a github email in plain text has no parts.
-        
-        # retrieve message content - go in via parts for some reason
-        message_content = message['payload']['parts']
-        part_one  = message_content[0] # fetching first element of the part 
-        part_body = part_one['body'] # fetching body of the message
-        part_data = part_body['data'] # fetching data from the body
-        clean_one = part_data.replace("-","+") # decoding from Base64 to UTF-8
-        clean_one = clean_one.replace("_","/") # decoding from Base64 to UTF-8
-        clean_two = base64.b64decode (bytes(clean_one, 'UTF-8')) # decoding from Base64 to UTF-8
-        message_body = BeautifulSoup(clean_two , "html.parser" )
-        message_dict['body'] = message_body
+        try:
+            # retrieve message content - go in via parts for some reason
+            message_content = message['payload']['parts']
+            part_one  = message_content[0] # fetching first element of the part 
+            part_body = part_one['body'] # fetching body of the message
+        except:
+            part_body = message['payload']['body']
+        finally:
+            pass
+
+        message_dict['data'] = part_body['data'] # fetching data from the body
+
+        # clean_one = part_data.replace("-","+") # decoding from Base64 to UTF-8
+        # clean_one = clean_one.replace("_","/") # decoding from Base64 to UTF-8
+        # clean_two = base64.b64decode (bytes(clean_one, 'UTF-8')) # decoding from Base64 to UTF-8
+        # message_body = BeautifulSoup(clean_two , "html.parser" )
+        # message_dict['body'] = message_body
 
         # append to list of compiled messages
         clean_messages.append(message_dict)
         # todo download conditionally on unread/read (label??)
 
-    print('lol')
+    import json
+    import sys
+
+    j = json.dumps(clean_messages, indent=4)
+    f = open('sample.json', 'w')
+    print(j, file = f)
+    f.close()
 
 if __name__ == '__main__':
     main()
