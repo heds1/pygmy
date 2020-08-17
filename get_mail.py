@@ -4,6 +4,11 @@ import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from apiclient import errors
+import base64
+import email
+import json # for json dump
+import sys  # for json dump
 
 from bs4 import BeautifulSoup
 import base64
@@ -11,9 +16,128 @@ import base64
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
+
+def get_message_ids(service, user_id='me', n=10):
+    """
+    return email message ids
+
+    ARGS
+        service: 
+            authorized Gmail API service instance
+        user_id: 
+            user's email address. the special value
+            "me" can be used to indicate the authenticated user.
+        n: 
+            number of message ids to retrieve (from most recent).
+
+    RETURNS:
+        a list of message ids
+    """
+    try:
+        message_list = service.users().messages().list(userId=user_id, maxResults=n).execute()
+        message_ids = [i['id'] for i in message_list['messages']]
+        return(message_ids)
+    except:
+        print('An error occurred retrievign the message IDs.')
+
+
+def get_message_content(service, user_id, msg_id):
+    """
+    retrieves the content of an email message, including metadata.
+
+    ARGS:
+        service: 
+            authorized Gmail API service instance.
+        user_id: user's email address. the special value
+            "me" can be used to indicate the authenticated user.
+        msg_id: the id of the email message to retrieve.
+    """
+
+    message_dict = {}
+    message = service.users().messages().get(userId=user_id, id=msg_id).execute()
+
+    # get message headers for metadata
+    message_headers = message['payload']['headers']
+
+    # turn list of dicts into single key/value pair dict
+    message_headers_ = {d['name']:d['value'] for d in message_headers}
+
+    # retrieve message metadata
+    message_dict['from'] = message_headers_['From']
+    message_dict['date'] = message_headers_['Date']
+    message_dict['subject'] = message_headers_['Subject']
+
+    # for rich-text (HTML-type) messages (?), message['payload']['parts']
+    # is a list of length 2. The first element comprises
+    # the mimeType: 'text/plain', while the second is mimeType: 'text/html'.
+    # both elements are dicts of length 5, containing 'body', 'filename',
+    # 'headers', 'mimeType' and 'partId' keys.
+    # however, other types of messages do not have a ['payload']['parts']
+    # heirarchy.
+
+    if 'parts' in message['payload'].keys():
+        try:
+            message_content = message['payload']['parts']
+        except:
+            print('unexpected error')
+
+        # not all messages have the same type. so firstly, gather a list
+        # of the mimeTypes in the given message
+        mime_types = []
+        for i in range(0, len(message_content)):
+            mime_types.append(message_content[i].get('mimeType'))
+
+        # then handle depending on type. presumably the types have their own
+        # constant heirarchy. TODO this should be formalized in a function
+        # elsewhere..
+        if 'text/html' in mime_types:
+            msg_index = mime_types.index('text/html')
+            message_body = message_content[msg_index]['body']['data']
+            message_type = 'text/html'
+        elif 'text/plain' in mime_types:
+            msg_index = mime_types.index('text/plain')
+            message_body = message_content[msg_index]['body']['data']
+            message_type = 'text/plain'
+        elif 'multipart/alternative' in mime_types:
+            msg_index = mime_types.index('multipart/alternative')
+            if message_content[msg_index].get('parts')[0]['mimeType'] == 'text/plain':
+                message_body = message_content[msg_index].get('parts')[0]['body']['data']
+                message_type = 'text/plain'
+            else:
+                print('cant parse message')
+    
+    # otherwise, we have a different type of message -- should be able
+    # to access 'body' directly
+    elif 'body' in message['payload'].keys():
+        message_body = message['payload']['body']['data']
+        message_type = message['payload']['mimeType']
+
+    else:
+        print('oh shit')
+    
+    message_dict['body'] = decode_message_body(message_body)
+    message_dict['type'] = message_type
+
+    return(message_dict)
+
+
+def decode_message_body(message_body):
+    """
+    TODO document
+    message bodies are retrieved in base64.
+    this function decodes to UTF-8.
+    """
+    message_body = message_body.replace("-","+")
+    message_body = message_body.replace("_","/") 
+    message_body = base64.b64decode(bytes(message_body, 'UTF-8'))
+    message_body = BeautifulSoup(message_body, "html.parser")
+    
+    return(message_body.get_text(separator = ' '))
+
+
 def main():
-    """Shows basic usage of the Gmail API.
-    Lists the user's Gmail labels.
+    """
+    TODO document.
     """
     creds = None
     # The file token.pickle stores the user's access and refresh tokens, and is
@@ -36,67 +160,26 @@ def main():
 
     service = build('gmail', 'v1', credentials=creds)
 
-    # get a list of the 5 most recent messages
-    # this does NOT retrieve the actual message data,
-    # we just use it to get the IDs
-    message_list = service.users().messages().list(userId='me', maxResults=5).execute()
-    message_ids = [i['id'] for i in message_list['messages']]
+    # get latest 10 message ids
+    latest_ids = get_message_ids(service=service, user_id='me', n=10)
 
-    # instantiate list to populate with clean messages
-    clean_messages = []
+    # instantiate list of messages
+    retrieved_messages = []
 
-    # loop over the message IDs to retrieve each actual message
-    for m in message_ids:
+    # loop over messages and append to retrieved_messages list
+    for id in latest_ids:
+        retrieved_messages.append(get_message_content(service, 'me', id))
 
-        # instantiate empty dict to hold message content
-        message_dict = {}
-
-        # retrieve the actual message
-        message = service.users().messages().get(userId='me', id=m).execute()
-
-        # get message headers for metadata
-        message_headers = message['payload']['headers']
-
-        # turn list of dicts into single key/value pair dict
-        message_headers_ = {d['name']:d['value'] for d in message_headers}
-
-        # retrieve message metadata
-        message_dict['from'] = message_headers_['From']
-        message_dict['date'] = message_headers_['Date']
-        message_dict['subject'] = message_headers_['Subject']
-
-        # make this a try.
-        # maybe parts is only for rich-text.
-        # e.g. a github email in plain text has no parts.
-        try:
-            # retrieve message content - go in via parts for some reason
-            message_content = message['payload']['parts']
-            part_one  = message_content[0] # fetching first element of the part 
-            part_body = part_one['body'] # fetching body of the message
-        except:
-            part_body = message['payload']['body']
-        finally:
-            pass
-
-        message_dict['data'] = part_body['data'] # fetching data from the body
-
-        # clean_one = part_data.replace("-","+") # decoding from Base64 to UTF-8
-        # clean_one = clean_one.replace("_","/") # decoding from Base64 to UTF-8
-        # clean_two = base64.b64decode (bytes(clean_one, 'UTF-8')) # decoding from Base64 to UTF-8
-        # message_body = BeautifulSoup(clean_two , "html.parser" )
-        # message_dict['body'] = message_body
-
-        # append to list of compiled messages
-        clean_messages.append(message_dict)
-        # todo download conditionally on unread/read (label??)
-
-    import json
-    import sys
-
-    j = json.dumps(clean_messages, indent=4)
+    # write to json file
+    j = json.dumps(retrieved_messages, indent=4)
     f = open('sample.json', 'w')
     print(j, file = f)
     f.close()
 
 if __name__ == '__main__':
     main()
+
+
+
+
+
