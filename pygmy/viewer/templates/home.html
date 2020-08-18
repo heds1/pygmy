@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Home page :)</h1>
+
+
+<form action='/' method='post'>
+    {% csrf_token %}
+    {{ form }}
+    <input type='submit' value='Get message ids'>
+</form>
+
+{% if message_ids is not None %}
+<p>
+{{ message_ids }}
+
+</p>
+{% endif %}
+
+
+{% endblock content %}
