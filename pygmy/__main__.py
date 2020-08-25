@@ -11,6 +11,7 @@ import json # for json dump
 import sys  # for json dump
 from bs4 import BeautifulSoup
 import base64
+import argparse
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -36,6 +37,7 @@ class MessageHandler:
         try:
             message_list = service.users().messages().list(userId=user_id, maxResults=n).execute()
             message_ids = [i['id'] for i in message_list['messages']]
+            print(str(len(message_ids)) + ' messages retrieved successfully!')
             return(message_ids)
         except:
             print('An error occurred retrievign the message IDs.')
@@ -169,13 +171,25 @@ def main():
     """
     TODO document.
     """
+    # instantiate argument parser
+    parser = argparse.ArgumentParser(description='Retrieve email messages.')
+    parser.add_argument('-n', type=int, default=5,
+    help='number of messages to retrieve. most recent messages are retrieved first. default: 5.')
+    args = parser.parse_args()
+
+    print("Pygmy started: requesting " + str(args.n) + " messages...")
+
+    # instantiate service
     srv = Service()
     service = srv.instantiate_service()
 
+    # instantiate message handler
     handler = MessageHandler()
-    
+   
     # get latest 10 message ids
-    latest_ids = handler.get_message_ids(service=service, user_id='me', n=10)
+    latest_ids = handler.get_message_ids(service=service, user_id='me', n=args.n)
+
+
 
     # instantiate list of messages
     retrieved_messages = []
