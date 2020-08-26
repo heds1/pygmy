@@ -6,3 +6,4 @@ testdb
 *.pyc
 pygmy/viewer/__pycache__/*
 pygmy/viewer/migrations/__pycache__/*
+.auth
