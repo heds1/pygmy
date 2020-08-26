@@ -7,13 +7,26 @@ Pygmy is a command-line tool used to backup email messages. It uses Gmail's API 
 
 # Quick start
 
-## Installing dependencies
+## Installing Pygmy and dependencies
 
 - Pygmy was built using Python 3.8.
-- Firstly, create a virtual environment and activate it:
+- Firstly, clone the project files:
 ```
+git clone https://github.com/heds1/pygmy.git
+```
+(this will create a `pygmy` folder in your working directory.)
+
+- Navigate into the pygmy directory and create a Python virtual environment, then activate it:
+```
+cd pygmy
 python3 -m venv env
 source env/bin/activate
+```
+
+- Create a folder to keep track of the authorization credentials for the API:
+
+```
+mkdir .auth
 ```
 
 - Install the required packages:
@@ -27,24 +40,25 @@ pip install -r requirements.txt
     - click `Enable the Gmail API`
     - select `Desktop app` drop the dropdown menu
     - download the `credentials.json` file
-    - and store it in the working directory of the project.
+    - and store it in the `.auth` folder. If you are forking this project, make sure that the authorization credentials are not committed into version control. (The `.auth` subdirectory is ignored by default, but if you move it, this could be an issue.)
 
-- Run `quickstart.py`:
-```
-python3 quickstart.py
-```
-- A browser window should open asking for your credentials. Upon authentication,
-a persistent token is created.
-
-# Usage
+# Quickstart
 
 - Run the program from the root pygmy directory using the default parameters:
 ```
 $ python -m pygmy
+```
 
+If this is the first time, a browser window should open asking for your credentials. Upon authentication,
+a persistent token is created in the `.auth` directory.
+If authentication is successful, you should see the following messages:
+
+```
 Pygmy started: requesting 5 messages...
 5 messages retrieved successfully!
 ```
+
+# Usage
 
 - Specify a number of messages different to the default (five most recent messages)
 with the -n flag:
