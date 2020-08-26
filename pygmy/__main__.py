@@ -12,6 +12,7 @@ import sys  # for json dump
 from bs4 import BeautifulSoup
 import base64
 import argparse
+from cryptography.fernet import Fernet
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -40,7 +41,7 @@ class MessageHandler:
             print(str(len(message_ids)) + ' messages retrieved successfully!')
             return(message_ids)
         except:
-            print('An error occurred retrievign the message IDs.')
+            print('An error occurred retrieving the message IDs.')
 
 
     def get_message_content(self, service, user_id, msg_id):
@@ -65,6 +66,7 @@ class MessageHandler:
         message_headers_ = {d['name']:d['value'] for d in message_headers}
 
         # retrieve message metadata
+        message_dict['gmail_id'] = msg_id
         message_dict['from'] = message_headers_['From']
         message_dict['date'] = message_headers_['Date']
         message_dict['subject'] = message_headers_['Subject']
@@ -143,12 +145,23 @@ class Service:
         """
         Instantiates a Gmail API service based on stored credentials
         """
+        # check for auth folder; create if it doesn't exist
+        if not os.path.exists('.auth'):
+            os.mkdir('.auth')
+
         creds = None
         # The file token.pickle stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
         # time.
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
+
+        # if this truly is the first time (i.e. if we don't see
+        # credentials.json)...
+        if not os.path.exists('.auth/credentials.json'):
+            print('Have you enabled the Gmail API? Follow the instructions at https://developers.google.com/gmail/api/quickstart/python to enable the Gmail API, and store the credentials locally.')
+            return(0)
+
+        if os.path.exists('.auth/token.pickle'):
+            with open('.auth/token.pickle', 'rb') as token:
                 creds = pickle.load(token)
         # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
@@ -156,15 +169,38 @@ class Service:
                 creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
+                    '.auth/credentials.json', SCOPES)
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
-            with open('token.pickle', 'wb') as token:
+            with open('.auth/token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
 
         service = build('gmail', 'v1', credentials=creds)
 
         return(service)
+
+
+class CryptHandler:
+    
+    def get_key(self):
+        """
+        check that decryption key is found. if not, create it.
+        """
+        if not os.path.exists('.auth/key'):
+            key = Fernet.generate_key()
+            f = open('.auth/key', 'wb')
+            f.write(key)
+            #print(key, file = f)
+            f.close()
+        
+        with open('.auth/key', 'rb') as keyfile:
+            key = keyfile.read()
+
+        return(key)
+     
+
+    def encrypt(self, key, string):
+        pass
 
 
 def main():
@@ -182,6 +218,19 @@ def main():
     # instantiate service
     srv = Service()
     service = srv.instantiate_service()
+    
+    # make sure credentials were loaded correctly
+    if service == 0:
+        return()
+
+    # instantiate cryptography handler
+    crypt_handler = CryptHandler()
+
+    # get the secret key
+    key = crypt_handler.get_key()
+    
+    # instantiate the fernet
+    f = Fernet(key)
 
     # instantiate message handler
     handler = MessageHandler()
@@ -189,14 +238,27 @@ def main():
     # get latest 10 message ids
     latest_ids = handler.get_message_ids(service=service, user_id='me', n=args.n)
 
-
-
     # instantiate list of messages
     retrieved_messages = []
 
     # loop over messages and append to retrieved_messages list
+    # also encrypt the dict values here
     for id in latest_ids:
-        retrieved_messages.append(handler.get_message_content(service, 'me', id))
+        msg = handler.get_message_content(service, 'me', id)
+        for i in msg.keys():
+            msg[i] = f.encrypt(i.encode())
+        retrieved_messages.append(msg)
+
+    # 
+    # for i in range(0, len(retrieved_messages)):
+    #     for j in retrieved_messages[i].keys():
+    #         if j == 'gmail_id':
+    #             j = f.encrypt(retrieved_messages[i])
+
+    # test = retrieved_messages[0].values
+
+    # token = f.encrypt(retrieved_messages[0]['from'].encode())
+    # #f.decrypt(token)
 
     # write to json file
     j = json.dumps(retrieved_messages, indent=4)
