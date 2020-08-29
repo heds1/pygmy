@@ -60,7 +60,7 @@ class Service:
         self.service = build('gmail', 'v1', credentials=creds)
         
 
-    def retrieve_ids(self, user_id='me', n=10):
+    def retrieve_ids(self, user_id='me', n=5):
         """
         return email message ids
 
@@ -101,71 +101,98 @@ class Service:
             print('An error occurred retrieving the message IDs.')
 
 
-
-class CryptHandler:
-    
-    def get_key(self):
-        """
-        check that decryption key is found. if not, create it.
-        """
+class Encryptor:
+    # init object by finding key and creating fernet
+    def __init__(self):
         if not os.path.exists('.auth/key'):
             key = Fernet.generate_key()
             f = open('.auth/key', 'wb')
             f.write(key)
-            #print(key, file = f)
             f.close()
         
         with open('.auth/key', 'rb') as keyfile:
-            key = keyfile.read()
+            self.key = keyfile.read()
 
-        return(key)
-     
+        self.fernet = Fernet(self.key)
 
-    def encrypt_message(self, key, msg, fernet):
+    def encrypt(self, obj):
         """
-        encrypts an email message.
-        only encrypts the body of the message,
-        not the metadata!
-        ARGS:
-            key - secret key
+        Encrypts a byte object.
+        param obj: 
+            the object to encrypt.
         """
-        msg['body'] = fernet.encrypt(msg['body'].encode())
-        
-        return(msg)
+        # if object is a string, convert to bytes for encryption
+        if type(obj) is str:
+            obj = obj.encode()
+        # encrypt, and convert back to str (so we can write to json)
+        obj = decode(self.fernet.encrypt(obj))
+        return obj
 
 
-class MessageHandler:
+class Message:
+    # instantiate a Message object with just the Gmail ID
+    def __init__(self, id):
+        self.gmail_id = id
+        self.date = None
+        self.sender = None
+        self.subject = None
+        self.body = None
+        self.type = None
 
 
-
-
-    def get_message_content(self, service, user_id, msg_id):
+    def retrieve_message(self, service, user_id):
         """
-        retrieves the content of an email message, including metadata.
-
-        ARGS:
-            service: 
-                authorized Gmail API service instance.
-            user_id: user's email address. the special value
-                "me" can be used to indicate the authenticated user.
-            msg_id: the id of the email message to retrieve.
+        Retrieve the JSON representation of an individual message.
+        param service: 
+            authorized Gmail API service instance.
+        param user_id:
+            user's email address ('me' indicates authorized user)
         """
+        try:
+            message = service.users().messages().get(userId=user_id, id=self.gmail_id).execute()
+            return message
+        except:
+            print('Error in Message.retrieve_message()')
+            return None
 
-        message_dict = {}
-        message = service.users().messages().get(userId=user_id, id=msg_id).execute()
 
-        # get message headers for metadata
-        message_headers = message['payload']['headers']
+    def parse_headers(self, message):
+        """
+        Parse the headers of a returned message JSON object.
+        param message:
+            the returned object of Message.retrieve_message().
+        """
+        try:
+            # get message headers for metadata
+            headers = message['payload']['headers']
+            # turn list of dicts into single key/value pair dict
+            headers = {d['name']:d['value'] for d in headers}
+            return headers
+        except:
+            print('Error in Messsage.parse_headers()')
+            return None
 
-        # turn list of dicts into single key/value pair dict
-        message_headers_ = {d['name']:d['value'] for d in message_headers}
 
-        # retrieve message metadata
-        message_dict['gmail_id'] = msg_id
-        message_dict['from'] = message_headers_['From']
-        message_dict['date'] = message_headers_['Date']
-        message_dict['subject'] = message_headers_['Subject']
+    def parse_metadata(self, headers):
+        """
+        Parse the metadata of a returned message JSON object,
+        using the intermediate message headers. saves to Message object.
+        param id:
+            the gmail_id of the message
+        param headers:
+            the returned objects of Message.parse_headers().
+        return:
+            dict containing message metadata ('from', 'date', 'subject')
+        """
+        try:
+            self.date = headers['Date']
+            self.sender = headers['From']
+            self.subject = headers['Subject']
+        except:
+            print('Error in Message.parse_metadata()')
 
+
+    def parse_body(self, payload):
         # for rich-text (HTML-type) messages (?), message['payload']['parts']
         # is a list of length 2. The first element comprises
         # the mimeType: 'text/plain', while the second is mimeType: 'text/html'.
@@ -174,9 +201,9 @@ class MessageHandler:
         # however, other types of messages do not have a ['payload']['parts']
         # heirarchy.
 
-        if 'parts' in message['payload'].keys():
+        if 'parts' in payload.keys():
             try:
-                message_content = message['payload']['parts']
+                message_content = payload['parts']
             except:
                 print('unexpected error')
 
@@ -207,31 +234,37 @@ class MessageHandler:
         
         # otherwise, we have a different type of message -- should be able
         # to access 'body' directly
-        elif 'body' in message['payload'].keys():
-            message_body = message['payload']['body']['data']
-            message_type = message['payload']['mimeType']
+        elif 'body' in payload.keys():
+            message_body = payload['body']['data']
+            message_type = payload['mimeType']
 
         else:
             print('oh shit')
         
-        message_dict['body'] = self.decode_message_body(message_body)
-        message_dict['type'] = message_type
+        self.body = self.decode(message_body)
+        self.type = message_type
+        return
 
-        return(message_dict)
+
+    def write_to_json(self):
+        j = json.dumps(self.__dict__, indent=4)
+        f = open('sample.json', 'a')
+        print(j, file = f)
+        f.close()
 
 
-    def decode_message_body(self, message_body):
+    def decode(self, obj):
         """
-        TODO document
-        message bodies are retrieved in base64.
-        this function decodes to UTF-8.
+        Decode string from base64 to UTF-8;
+        parse HTML with BeautifulSoup.
+        param obj:
+            string to decode.
         """
-        message_body = message_body.replace("-","+")
-        message_body = message_body.replace("_","/") 
-        message_body = base64.b64decode(bytes(message_body, 'UTF-8'))
-        message_body = BeautifulSoup(message_body, "html.parser")
-        
-        return(message_body.get_text(separator = ' '))
+        obj = obj.replace("-","+")
+        obj = obj.replace("_","/") 
+        obj = base64.b64decode(bytes(obj, 'UTF-8'))
+        obj = BeautifulSoup(obj, "html.parser")
+        return(obj.get_text(separator = ' '))
 
 
     def write_to_db(self, msg, encrypt):
@@ -256,8 +289,9 @@ def main():
     TODO document.
     """
     # instantiate argument parser
-    
     parser = argparse.ArgumentParser(description='Retrieve email messages.')
+
+    # specify number of messages to retrieve
     parser.add_argument('-n', type=int, default=5,
         help='number of messages to retrieve. most recent messages are retrieved first. default: 5.')
     
@@ -275,67 +309,35 @@ def main():
 
     print("Pygmy started: requesting " + str(args.n) + " messages...")
 
+    # instantiate service
+    service = Service()       
     
-    service = Service()             # instantiate service
-    # get latest n message ids
-    #latest_ids = service.retrieve_ids(user_id='me', n=args.n)
-    # looks like 500 is the max
-    latest_ids = service.retrieve_ids(user_id='me', n=800)
-    
-    # make sure credentials were loaded correctly
-    if service == 0:
-        return()
-
     # instantiate cryptography handler
-    crypt_handler = CryptHandler()
+    if args.e:
+        encryptor = Encryptor()
 
-    # get the secret key
-    key = crypt_handler.get_key()
-    
-    # instantiate the fernet
-    f = Fernet(key)
+    # get latest n message ids
+    latest_ids = service.retrieve_ids(user_id='me', n=args.n)
 
-    # instantiate message handler
-    handler = MessageHandler()
-   
-
-
-    # instantiate list of messages
-    retrieved_messages = []
-
-    # loop over messages and append to retrieved_messages list
-    # also encrypt the dict values here
+    # retrieve and save messages
     for id in latest_ids:
-        msg = handler.get_message_content(service, 'me', id)
+        message = Message(id)
+        payload = message.retrieve_message(service.service, 'me')
+        headers = message.parse_headers(payload)
+        message.parse_metadata(headers)
+        message.parse_body(payload['payload'])
+
         if args.e:
-            msg = crypt_handler.encrypt_message(key=key, msg=msg, fernet=f)
+            message.body = encryptor.encrypt(message.body)
 
-        # write to db?
-        handler.write_to_db(msg=msg, encrypt=args.e)
-
-        retrieved_messages.append(msg)
-
-     
-    # for i in range(0, len(retrieved_messages)):
-    #     for j in retrieved_messages[i].keys():
-    #         if j == 'gmail_id':
-    #             j = f.encrypt(retrieved_messages[i])
-
-    # test = retrieved_messages[0].values
-
-    # token = f.encrypt(retrieved_messages[0]['from'].encode())
-    # #f.decrypt(token)
-
-    # write to json filee
-    #j = json.dumps(retrieved_messages, indent=4)
-    #f = open('sample2.json', 'w')
-    #print(j, file = f)
-    #f.close()
+        message.write_to_json()
+    
 
 if __name__ == '__main__':
     main()
 
 
+        
 
 
 
