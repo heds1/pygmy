@@ -129,6 +129,9 @@ class Encryptor:
         return obj
 
 
+
+
+
 class Message:
     # instantiate a Message object with just the Gmail ID
     def __init__(self, id):
@@ -267,23 +270,67 @@ class Message:
         return(obj.get_text(separator = ' '))
 
 
-    def write_to_db(self, msg, encrypt):
-        conn = sqlite3.connect('db.sqlite')
+    def write_to_db(self, conn):
+        # conn = sqlite3.connect('db.sqlite')
         c = conn.cursor()
-        if encrypt:
-            # if encrypt 
-            body = msg['body'].decode()
-        else:
-            body = msg['body'].encode()
-        # need to decode the values from byte to string
-        query = str("INSERT INTO EMAILS (Sender, Date, Subject, Content) VALUES ('" +
-                msg['from'] + "', '" + msg['date'] + "', '" +
-                msg['subject'] + "', '" + body + "')")
-        c.execute(query)
+        # if encrypt:
+        #     # if encrypt 
+        #     body = msg['body'].decode()
+        # else:
+        #     body = msg['body'].encode()
+        # # need to decode the values from byte to string
+        # query = str("INSERT INTO EMAILS (Sender, Date, Subject, Content) VALUES ('" +
+        #         msg['from'] + "', '" + msg['date'] + "', '" +
+        #         msg['subject'] + "', '" + body + "')")
+        t = (self.gmail_id,
+            #self.thread,
+            self.sender,
+            self.date,
+            self.subject,
+            self.body)
+        c.execute("""INSERT INTO messages
+            (gmail_id, sender, date, subject, body)
+            VALUES (?,?,?,?,?)""", t)
+        
         conn.commit()
-        conn.close()
 
 
+class DatabaseHandler:
+    """
+    connects to an existing database.
+    instantiated with a database file.
+    if no database file is found,
+    creates a new database.
+    """
+    def __init__(self, database):
+        try:
+            conn = sqlite3.connect(database)
+        except sqlite3.Error as e:
+            print('DatabaseHandler error: ' + e)
+        finally:
+            self.conn = conn
+
+        # create table if it doesn't exist
+        try:
+            c = self.conn.cursor()
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id integer PRIMARY KEY,
+                    gmail_id text NOT NULL,
+                    thread text,
+                    sender text,
+                    date text,
+                    subject text,
+                    body text
+                    );""")
+        except sqlite3.Error as e:
+            print('DatabaseHandler error: ' + e)
+
+    
+    def close(self):
+        self.conn.close()
+
+    
 def main():
     """
     TODO document.
@@ -292,7 +339,7 @@ def main():
     parser = argparse.ArgumentParser(description='Retrieve email messages.')
 
     # specify number of messages to retrieve
-    parser.add_argument('-n', type=int, default=5,
+    parser.add_argument('-n', type=int, default=2,
         help='number of messages to retrieve. most recent messages are retrieved first. default: 5.')
     
     # optional encryption argument. action='store_true' means
@@ -316,6 +363,9 @@ def main():
     if args.e:
         encryptor = Encryptor()
 
+    # connect to database
+    db = DatabaseHandler(database='db.sqlite')
+
     # get latest n message ids
     latest_ids = service.retrieve_ids(user_id='me', n=args.n)
 
@@ -330,7 +380,11 @@ def main():
         if args.e:
             message.body = encryptor.encrypt(message.body)
 
-        message.write_to_json()
+        #message.write_to_json()
+        message.write_to_db(conn = db.conn)
+
+    # close connection
+    db.close()
     
 
 if __name__ == '__main__':
