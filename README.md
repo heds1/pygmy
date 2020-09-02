@@ -1,11 +1,9 @@
-# In development - not released
+<color:red>Pygmy is in development and is not in a stable release.</color>
 
 # Pygmy
 
-Pygmy is a command-line tool used to backup email messages. It uses Gmail's API to find and retrieve messages for an authenticated account.
-
-
-# Quick start
+Pygmy is a command-line tool used to backup email messages.
+It uses Gmail's API to find and retrieve messages for an authenticated account.
 
 ## Installing Pygmy and dependencies
 
@@ -34,6 +32,12 @@ mkdir .auth
 pip install -r requirements.txt
 ```
 
+- Install sqlite
+    - Debian/Ubuntu:
+    ```
+    sudo apt install sqlite3
+    ```
+
 ## Authenticating the Gmail account
 
 - Navigate to the Gmail API Python quickstart documentation [here](https://developers.google.com/gmail/api/quickstart/python);
@@ -42,11 +46,9 @@ pip install -r requirements.txt
     - download the `credentials.json` file
     - and store it in the `.auth` folder. If you are forking this project, make sure that the authorization credentials are not committed into version control. (The `.auth` subdirectory is ignored by default, but if you move it, this could be an issue.)
 
-# Quickstart
-
-- Run the program from the root pygmy directory using the default parameters:
+- Run the package from the root pygmy directory using the default parameters:
 ```
-$ python -m pygmy
+$ python pygmy
 ```
 
 If this is the first time, a browser window should open asking for your credentials. Upon authentication,
@@ -58,23 +60,9 @@ Pygmy started: requesting 5 messages...
 5 messages retrieved successfully!
 ```
 
-# Usage
+Refer to the [user guide](https://github.com/heds1/pygmy/blob/master/docs/index.md) 
+for further documentation.
 
-- Specify a number of messages different to the default (five most recent messages)
-with the -n flag:
-
-```
-$ python -m pygmy -n 2
-
-Pygmy started: requesting 2 messages...
-2 messages retrieved successfully!
-```
-
-TODO: Further information can be found in /docs/usage.md
-
-# Contributors
-- [Hedley Stirrat](https://github.com/heds1) 
-- [Abhishek Chhibber](https://github.com/abhishekchhibber) wrote the original [Gmail-API-through-Python](https://github.com/abhishekchhibber/Gmail-Api-through-Python), and did a better job than the Google API documentation of showing how to retrieve and decode email objects. Some of his code probably lives on in this project today.
-
-
-
+## Contributors
+- [Hedley Stirrat](https://github.com/heds1) is the author of Pygmy.
+- [Abhishek Chhibber](https://github.com/abhishekchhibber) wrote the original [Gmail-API-through-Python](https://github.com/abhishekchhibber/Gmail-Api-through-Python), and his code helped this project get off the ground.
