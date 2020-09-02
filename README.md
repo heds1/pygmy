@@ -1,4 +1,6 @@
-<color:red>Pygmy is in development and is not in a stable release.</color>
+```diff
+- Pygmy is in development and is not in a stable release.
+```
 
 # Pygmy
 
