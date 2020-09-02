@@ -135,7 +135,8 @@ class Message:
         self.gmail_id = id
         self.thread = None
         self.date = None
-        self.sender = None
+        self.sender_name = None
+        self.sender_email = None
         self.subject = None
         self.body = None
         self.type = None
@@ -182,6 +183,7 @@ class Message:
 
 
     def parse_metadata(self, headers):
+        import re
         """
         Parse the metadata of a returned message JSON object,
         using the intermediate message headers. saves to Message object.
@@ -189,12 +191,13 @@ class Message:
             the gmail_id of the message
         param headers:
             the returned objects of Message.parse_headers().
-        return:
-            dict containing message metadata ('from', 'date', 'subject')
+        return: 
+            none
         """
         try:
             self.date = headers['Date']
-            self.sender = headers['From']
+            self.sender_name = re.search(r"(.*?)(?= \<)", headers['From']).group(0)
+            self.sender_email = re.search(r"(?<=\<).*?(?=\>)", headers['From']).group(0)
             self.subject = headers['Subject']
         except:
             print('Error in Message.parse_metadata()')
@@ -279,13 +282,14 @@ class Message:
         c = conn.cursor()
         t = (self.gmail_id,
             self.thread,
-            self.sender,
+            self.sender_email,
+            self.sender_name,
             self.date,
             self.subject,
             self.body)
         c.execute("""INSERT INTO messages
-            (gmail_id, thread, sender, date, subject, body)
-            VALUES (?,?,?,?,?,?)""", t)
+            (gmail_id, thread, sender_email, sender_name, date, subject, body)
+            VALUES (?,?,?,?,?,?,?)""", t)
         
         conn.commit()
 
@@ -313,7 +317,8 @@ class DatabaseHandler:
                     id integer PRIMARY KEY,
                     gmail_id text NOT NULL UNIQUE,
                     thread text,
-                    sender text,
+                    sender_email text,
+                    sender_name text,
                     date text,
                     subject text,
                     body text
