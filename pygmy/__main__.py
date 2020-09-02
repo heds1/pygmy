@@ -129,13 +129,11 @@ class Encryptor:
         return obj
 
 
-
-
-
 class Message:
     # instantiate a Message object with just the Gmail ID
     def __init__(self, id):
         self.gmail_id = id
+        self.thread = None
         self.date = None
         self.sender = None
         self.subject = None
@@ -157,6 +155,13 @@ class Message:
         except:
             print('Error in Message.retrieve_message()')
             return None
+
+    
+    def parse_thread(self, message):
+        try:
+            self.thread = message['threadId']
+        except:
+            print('Error in parse_thread.')
 
 
     def parse_headers(self, message):
@@ -271,26 +276,16 @@ class Message:
 
 
     def write_to_db(self, conn):
-        # conn = sqlite3.connect('db.sqlite')
         c = conn.cursor()
-        # if encrypt:
-        #     # if encrypt 
-        #     body = msg['body'].decode()
-        # else:
-        #     body = msg['body'].encode()
-        # # need to decode the values from byte to string
-        # query = str("INSERT INTO EMAILS (Sender, Date, Subject, Content) VALUES ('" +
-        #         msg['from'] + "', '" + msg['date'] + "', '" +
-        #         msg['subject'] + "', '" + body + "')")
         t = (self.gmail_id,
-            #self.thread,
+            self.thread,
             self.sender,
             self.date,
             self.subject,
             self.body)
         c.execute("""INSERT INTO messages
-            (gmail_id, sender, date, subject, body)
-            VALUES (?,?,?,?,?)""", t)
+            (gmail_id, thread, sender, date, subject, body)
+            VALUES (?,?,?,?,?,?)""", t)
         
         conn.commit()
 
@@ -316,7 +311,7 @@ class DatabaseHandler:
             c.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id integer PRIMARY KEY,
-                    gmail_id text NOT NULL,
+                    gmail_id text NOT NULL UNIQUE,
                     thread text,
                     sender text,
                     date text,
@@ -325,6 +320,18 @@ class DatabaseHandler:
                     );""")
         except sqlite3.Error as e:
             print('DatabaseHandler error: ' + e)
+
+
+    def get_ids(self):
+        try:
+            c = self.conn.cursor()
+            ids = []
+            for row in c.execute("""SELECT gmail_id FROM messages;"""):
+                # a tuple of len 1 is returned, just get the only element
+                ids.append(row[0])
+        except sqlite3.Error as e:
+            print('DatabaseHandler.get_ids() error: ' + e)
+        return ids
 
     
     def close(self):
@@ -339,7 +346,7 @@ def main():
     parser = argparse.ArgumentParser(description='Retrieve email messages.')
 
     # specify number of messages to retrieve
-    parser.add_argument('-n', type=int, default=2,
+    parser.add_argument('-n', type=int, default=5,
         help='number of messages to retrieve. most recent messages are retrieved first. default: 5.')
     
     # optional encryption argument. action='store_true' means
@@ -366,21 +373,25 @@ def main():
     # connect to database
     db = DatabaseHandler(database='db.sqlite')
 
-    # get latest n message ids
+    # get latest n message ids; compare against stored ids
     latest_ids = service.retrieve_ids(user_id='me', n=args.n)
+    stored_ids = db.get_ids()
+    new_ids = set(latest_ids).difference(stored_ids)
+    print('Of the ' + str(len(latest_ids)) + ' latest messages queried, ' + str(len(new_ids)) + ' new messages were downloaded.')
 
-    # retrieve and save messages
-    for id in latest_ids:
+    # retrieve and save messages that are not already retrieved
+    for id in new_ids:
         message = Message(id)
         payload = message.retrieve_message(service.service, 'me')
         headers = message.parse_headers(payload)
+        message.parse_thread(payload)
         message.parse_metadata(headers)
         message.parse_body(payload['payload'])
 
         if args.e:
             message.body = encryptor.encrypt(message.body)
 
-        #message.write_to_json()
+        # write to the database
         message.write_to_db(conn = db.conn)
 
     # close connection
