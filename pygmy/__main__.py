@@ -50,7 +50,11 @@ def main():
         message.parse_thread(payload)
         message.parse_metadata(headers)
         message.parse_body(payload['payload'])
-
+        attachment_ids = message.retrieve_attachment_ids(payload['payload'])
+        if (len(attachment_ids) > 0):
+            for i in attachment_ids.keys():
+                attachment_data = message.retrieve_attachment(service.service, 'me', i)
+                message.save_attachment(attachment_ids[i], attachment_data)
         if args.e:
             message.body = encryptor.encrypt(message.body)
 

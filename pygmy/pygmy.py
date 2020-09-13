@@ -81,8 +81,12 @@ class Message:
         """
         try:
             self.date = headers['Date']
-            self.sender_name = re.search(r"(.*?)(?= \<)", headers['From']).group(0)
-            self.sender_email = re.search(r"(?<=\<).*?(?=\>)", headers['From']).group(0)
+            _name = re.search(r"(.*?)(?= \<)", headers['From'])
+            if _name is not None:
+                self.sender_name = _name.group(0)
+            _email = re.search(r"(?<=\<).*?(?=\>)", headers['From'])
+            if _email is not None:
+                self.sender_email = _email.group(0)
             self.subject = headers['Subject']
         except:
             print('Error in Message.parse_metadata()')
@@ -142,6 +146,56 @@ class Message:
         return
 
 
+    def retrieve_attachment_ids(self, payload):
+        """
+        check for any attachments. if any are found,
+        return dict of attachment ids, where key is the
+        attachmentId as a string, and value is the filename
+        of the given attachmentId. 
+        payload is given by payload['payload'],
+        i.e., the same payload passed to parse_body.
+        """
+        attachment_ids = {}
+        if 'parts' in payload.keys():
+            for i in payload['parts']:
+                if 'attachmentId' in i['body'].keys():
+                    print("attachment found")
+                    attachment_ids[i['body']['attachmentId']] = i['filename']
+            return attachment_ids
+
+        else:
+            return
+
+
+    def retrieve_attachment(self, service, user_id, attachment_id):
+        """
+        retrieve an attachment from a given attachment id. attachment_id
+        is the key of an element of the attachment_ids dictionary produced
+        by Message.retrieve_attachment_ids.
+        """
+        try:
+            attachment = service.users().messages().attachments().get(
+                userId=user_id, messageId=self.gmail_id, id=attachment_id).execute()
+            print('check attachment debug')
+            return attachment['data']
+        except:
+            print('Error in Message.retrieve_attachment()')
+            return None
+
+
+    def save_attachment(self, filename, data):
+        """
+        decodes and saves an attachment to the filesystem. 
+        attachments are encoded in base64.
+        filename and data arguments are provided by the key and value,
+        respectively, of an element of the attachment_ids dictionary.
+        """
+        print('pretending to save attachment')
+        with open(filename, 'wb') as f:
+            f.write(base64.urlsafe_b64decode(data))
+
+
+    # attachment = service.users().messages().get(userId=user_id, id=self.gmail_id).execute()
     # def write_to_json(self):
     #     j = json.dumps(self.__dict__, indent=4)
     #     f = open('sample.json', 'a')
