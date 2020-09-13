@@ -130,7 +130,7 @@ class Message:
                     message_body = message_content[msg_index].get('parts')[0]['body']['data']
                     message_type = 'text/plain'
                 else:
-                    print('cant parse message')
+                    print('Error in Message.parse_body() - unsupported MIME type.')
         
         # otherwise, we have a different type of message -- should be able
         # to access 'body' directly
@@ -139,7 +139,7 @@ class Message:
             message_type = payload['mimeType']
 
         else:
-            print('oh shit')
+            print('Error in Message.parse_body().')
         
         self.body = self.decode(message_body)
         self.type = message_type
@@ -159,7 +159,6 @@ class Message:
         if 'parts' in payload.keys():
             for i in payload['parts']:
                 if 'attachmentId' in i['body'].keys():
-                    print("attachment found")
                     attachment_ids[i['body']['attachmentId']] = i['filename']
             return attachment_ids
 
@@ -176,23 +175,37 @@ class Message:
         try:
             attachment = service.users().messages().attachments().get(
                 userId=user_id, messageId=self.gmail_id, id=attachment_id).execute()
-            print('check attachment debug')
             return attachment['data']
         except:
             print('Error in Message.retrieve_attachment()')
             return None
 
 
-    def save_attachment(self, filename, data):
+    # def save_attachment(self, filename, data):
+    #     """
+    #     decodes and saves an attachment to the filesystem. 
+    #     attachments are encoded in base64.
+    #     filename and data arguments are provided by the key and value,
+    #     respectively, of an element of the attachment_ids dictionary.
+    #     """
+    #     print('pretending to save attachment')
+    #     with open(filename, 'wb') as f:
+    #         f.write(base64.urlsafe_b64decode(data))
+
+    def write_attachment(self, conn, attachment_id, filename, data):
         """
-        decodes and saves an attachment to the filesystem. 
-        attachments are encoded in base64.
-        filename and data arguments are provided by the key and value,
-        respectively, of an element of the attachment_ids dictionary.
+        writes attachment to database.
         """
-        print('pretending to save attachment')
-        with open(filename, 'wb') as f:
-            f.write(base64.urlsafe_b64decode(data))
+        print('saving attachment ' + filename + ' to database...')
+        c = conn.cursor()
+        t = (self.gmail_id,
+            attachment_id,
+            filename,
+            data)
+        c.execute("""INSERT INTO attachments
+            (gmail_id, attachment_id, filename, data)
+            VALUES (?,?,?,?)""", t)
+        conn.commit()
 
 
     # attachment = service.users().messages().get(userId=user_id, id=self.gmail_id).execute()
@@ -229,7 +242,6 @@ class Message:
         c.execute("""INSERT INTO messages
             (gmail_id, thread, sender_email, sender_name, date, subject, body)
             VALUES (?,?,?,?,?,?,?)""", t)
-        
         conn.commit()
 
 
@@ -365,7 +377,17 @@ class DatabaseHandler:
                     date text,
                     subject text,
                     body text
-                    );""")
+                );"""
+            )
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS attachments (
+                    id integer PRIMARY KEY,
+                    gmail_id text NOT NULL,
+                    attachment_id text NOT NULL,
+                    filename text NOT NULL,
+                    data text NOT NULL
+                );"""
+            )
         except sqlite3.Error as e:
             print('DatabaseHandler error: ' + e)
 
