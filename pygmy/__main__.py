@@ -50,7 +50,12 @@ def main():
         message.parse_thread(payload)
         message.parse_metadata(headers)
         message.parse_body(payload['payload'])
-
+        attachment_ids = message.retrieve_attachment_ids(payload['payload'])
+        if attachment_ids is not None:
+            for i in attachment_ids.keys():
+                attachment_data = message.retrieve_attachment(service.service, 'me', i)
+                message.write_attachment(db.conn, i, attachment_ids[i], attachment_data)
+                #message.save_attachment(attachment_ids[i], attachment_data)
         if args.e:
             message.body = encryptor.encrypt(message.body)
 
